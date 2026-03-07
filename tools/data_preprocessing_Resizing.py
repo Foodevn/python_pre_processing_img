@@ -111,7 +111,8 @@ def to_save_bgr(image, color_space):
 
 def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224), 
                                padding_color=(0, 0, 0), color_space="BGR",
-                               save_as_npy=False, visualize_samples=True):
+                               save_as_npy=False, visualize_samples=True,
+                               output_prefix="strawberry", add_ripe_in_name=None):
     """
     Xử lý toàn bộ dataset ảnh dâu tây
     
@@ -125,6 +126,9 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
             - True: lưu tensor dưới dạng .npy
             - False: lưu ảnh thông thường
         visualize_samples: Hiển thị mẫu ảnh trước và sau xử lý
+        output_prefix: Tiền tố tên file output
+        add_ripe_in_name: True/False/None.
+            - None: tự động thêm 'ripe' khi tên thư mục input là 'Ripe'
     """
     # Tạo thư mục output nếu chưa có
     output_path = Path(output_dir)
@@ -138,8 +142,10 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
         print(f"❌ Thư mục không tồn tại: {input_dir}")
         return
     
-    image_files = [f for f in input_path.iterdir() 
-                   if f.suffix.lower() in image_extensions]
+    image_files = sorted(
+        [f for f in input_path.iterdir() if f.suffix.lower() in image_extensions],
+        key=lambda p: p.name.lower()
+    )
     
     if not image_files:
         print(f"❌ Không tìm thấy ảnh nào trong thư mục: {input_dir}")
@@ -154,6 +160,12 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
     color_space = color_space.upper()
     if color_space not in {"BGR", "RGB", "HSV", "LAB"}:
         raise ValueError("color_space phải là 'BGR', 'RGB', 'HSV' hoặc 'LAB'.")
+
+    if add_ripe_in_name is None:
+        # Chỉ gắn 'ripe' khi tên folder là đúng 'ripe' (tránh nhầm với 'unripe').
+        add_ripe_in_name = input_path.name.lower() == "ripe"
+
+    print(f"📝 Đặt tên tăng dần: {output_prefix}_{'ripe_' if add_ripe_in_name else ''}0001...")
     
     # Danh sách để lưu mẫu ảnh để visualize
     samples_before = []
@@ -179,11 +191,12 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
             processed_image = convert_color_space(resized_image, color_space=color_space)
             
             # Lưu ảnh đã xử lý
+            name_stem = f"{output_prefix}_{'ripe_' if add_ripe_in_name else ''}{idx:04d}"
             if save_as_npy:
-                output_file = output_path / f"{image_file.stem}.npy"
+                output_file = output_path / f"{name_stem}.npy"
                 np.save(str(output_file), processed_image)
             else:
-                output_file = output_path / image_file.name
+                output_file = output_path / f"{name_stem}{image_file.suffix.lower()}"
                 save_image = to_save_bgr(processed_image, color_space)
                 cv2.imwrite(str(output_file), save_image)
             
@@ -246,24 +259,26 @@ def visualize_preprocessing(samples_before, samples_after):
 
 if __name__ == "__main__":
     # Ví dụ sử dụng
-    
-    # Đường dẫn thư mục
-    INPUT_DIR = "./dataset/strawberry/Unripe"
-    OUTPUT_DIR = "./dataset/strawberry/Unripe_processed_224"
-    
-    # Cấu hình
-    TARGET_SIZE = (224, 224)  # Hoặc (299, 299) cho InceptionV3, Xception
-    PADDING_COLOR = (0, 0, 0)  # Màu đen, có thể dùng (255, 255, 255) cho màu trắng
-    COLOR_SPACE = "HSV"  # 'BGR' | 'RGB' | 'HSV' | 'LAB'
-    SAVE_AS_NPY = False   # Bạn chưa cần xuất .npy
-    
-    # Xử lý dataset
     process_strawberry_dataset(
-        input_dir=INPUT_DIR,
-        output_dir=OUTPUT_DIR,
-        target_size=TARGET_SIZE,
-        padding_color=PADDING_COLOR,
-        color_space=COLOR_SPACE,
-        save_as_npy=SAVE_AS_NPY,
-        visualize_samples=True
-    )
+        input_dir="./dataset/strawberry/Ripe",                 # Thư mục ảnh gốc (label: ripe)
+        output_dir="./dataset/strawberry/Ripe_processed_224",  # Thư mục lưu ảnh sau xử lý
+        target_size=(224, 224),                                 # Kích thước chuẩn cho CNN
+        padding_color=(0, 0, 0),                                # Màu viền khi giữ tỉ lệ ảnh
+        color_space="HSV",                                     # Không gian màu đầu ra: BGR/RGB/HSV/LAB
+        save_as_npy=False,                                      # False: lưu ảnh, True: lưu tensor .npy
+        visualize_samples=True,                                 # Hiển thị ảnh trước/sau (3 mẫu đầu)
+        output_prefix="strawberry",                            # Tiền tố tên file output
+        add_ripe_in_name=None                                   # None: tự nhận diện folder Ripe để thêm 'ripe'
+    )  
+    process_strawberry_dataset(
+        input_dir="./dataset/strawberry/Unripe",                 # Thư mục ảnh gốc (label: unripe)
+        output_dir="./dataset/strawberry/Unripe_processed_224",  # Thư mục lưu ảnh sau xử lý
+        target_size=(224, 224),                                   # Kích thước chuẩn cho CNN
+        padding_color=(0, 0, 0),                                  # Màu viền khi giữ tỉ lệ ảnh
+        color_space="HSV",                                       # Không gian màu đầu ra: BGR/RGB/HSV/LAB
+        save_as_npy=False,                                        # False: lưu ảnh, True: lưu tensor .npy
+        visualize_samples=True,                                   # Hiển thị ảnh trước/sau (3 mẫu đầu)
+        output_prefix="strawberry_unripe",                       # Tiền tố tên file output
+        add_ripe_in_name=None                                     # None: không thêm 'ripe' cho folder Unripe
+    )   
+ 
