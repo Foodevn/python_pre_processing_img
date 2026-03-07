@@ -48,8 +48,70 @@ def resize_with_padding(image, target_size=(224, 224), padding_color=(0, 0, 0)):
     return padded_image
 
 
+def convert_color_space(image, color_space="BGR"):
+    """
+    Bước 4 (tùy chọn): Chuyển đổi không gian màu.
+
+    Args:
+        image: Ảnh đầu vào theo BGR (cv2.imread)
+        color_space: 'BGR' | 'RGB' | 'HSV' | 'LAB'
+
+    Returns:
+        Ảnh đã chuyển đổi theo không gian màu yêu cầu
+    """
+    color_space = color_space.upper()
+
+    if color_space == "BGR":
+        return image
+    if color_space == "RGB":
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    if color_space == "HSV":
+        return cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    if color_space == "LAB":
+        return cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+
+    raise ValueError("color_space phải là 'BGR', 'RGB', 'HSV' hoặc 'LAB'.")
+
+
+def to_display_rgb(image, color_space):
+    """
+    Chuyển ảnh đã xử lý về RGB để hiển thị bằng matplotlib.
+    """
+    color_space = color_space.upper()
+
+    if color_space == "BGR":
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    if color_space == "RGB":
+        return image
+    if color_space == "HSV":
+        return cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
+    if color_space == "LAB":
+        return cv2.cvtColor(image, cv2.COLOR_LAB2RGB)
+
+    raise ValueError("color_space phải là 'BGR', 'RGB', 'HSV' hoặc 'LAB'.")
+
+
+def to_save_bgr(image, color_space):
+    """
+    Chuyển ảnh về BGR để lưu bằng cv2.imwrite.
+    """
+    color_space = color_space.upper()
+
+    if color_space == "BGR":
+        return image
+    if color_space == "RGB":
+        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    if color_space == "HSV":
+        return cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+    if color_space == "LAB":
+        return cv2.cvtColor(image, cv2.COLOR_LAB2BGR)
+
+    raise ValueError("color_space phải là 'BGR', 'RGB', 'HSV' hoặc 'LAB'.")
+
+
 def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224), 
-                               padding_color=(0, 0, 0), visualize_samples=True):
+                               padding_color=(0, 0, 0), color_space="BGR",
+                               save_as_npy=False, visualize_samples=True):
     """
     Xử lý toàn bộ dataset ảnh dâu tây
     
@@ -58,6 +120,10 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
         output_dir: Thư mục lưu ảnh đã xử lý
         target_size: Kích thước đích (width, height)
         padding_color: Màu padding (B, G, R)
+        color_space: Không gian màu đầu ra 'BGR' | 'RGB' | 'HSV' | 'LAB'
+        save_as_npy: True/False.
+            - True: lưu tensor dưới dạng .npy
+            - False: lưu ảnh thông thường
         visualize_samples: Hiển thị mẫu ảnh trước và sau xử lý
     """
     # Tạo thư mục output nếu chưa có
@@ -82,7 +148,12 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
     print(f"📂 Tìm thấy {len(image_files)} ảnh trong {input_dir}")
     print(f"🎯 Kích thước đích: {target_size[0]}x{target_size[1]} pixels")
     print(f"🎨 Màu padding: {padding_color}")
+    print(f"🌈 Color space: {color_space}")
     print("─" * 60)
+
+    color_space = color_space.upper()
+    if color_space not in {"BGR", "RGB", "HSV", "LAB"}:
+        raise ValueError("color_space phải là 'BGR', 'RGB', 'HSV' hoặc 'LAB'.")
     
     # Danh sách để lưu mẫu ảnh để visualize
     samples_before = []
@@ -102,22 +173,30 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
             original_shape = image.shape[:2]
             
             # Resize với padding
-            processed_image = resize_with_padding(image, target_size, padding_color)
+            resized_image = resize_with_padding(image, target_size, padding_color)
+            
+            # Bước 4: Chuyển đổi không gian màu (tùy chọn)
+            processed_image = convert_color_space(resized_image, color_space=color_space)
             
             # Lưu ảnh đã xử lý
-            output_file = output_path / image_file.name
-            cv2.imwrite(str(output_file), processed_image)
+            if save_as_npy:
+                output_file = output_path / f"{image_file.stem}.npy"
+                np.save(str(output_file), processed_image)
+            else:
+                output_file = output_path / image_file.name
+                save_image = to_save_bgr(processed_image, color_space)
+                cv2.imwrite(str(output_file), save_image)
             
             processed_count += 1
             print(f"✅ [{idx}/{len(image_files)}] {image_file.name}: "
                   f"{original_shape[1]}x{original_shape[0]} → "
-                  f"{target_size[0]}x{target_size[1]}")
+                  f"{target_size[0]}x{target_size[1]} | {color_space}")
             
             # Lưu mẫu để visualize (3 ảnh đầu tiên)
             if visualize_samples and len(samples_before) < 3:
                 samples_before.append((cv2.cvtColor(image, cv2.COLOR_BGR2RGB), 
                                       image_file.name))
-                samples_after.append((cv2.cvtColor(processed_image, cv2.COLOR_BGR2RGB),
+                samples_after.append((to_display_rgb(processed_image, color_space),
                                      image_file.name))
                 
         except Exception as e:
@@ -126,6 +205,8 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
     print("─" * 60)
     print(f"✨ Hoàn thành! Đã xử lý {processed_count}/{len(image_files)} ảnh")
     print(f"📁 Ảnh đã lưu tại: {output_dir}")
+    if save_as_npy:
+        print("💾 Định dạng lưu: .npy (phù hợp làm input cho model)")
     
     # Hiển thị mẫu ảnh
     if visualize_samples and samples_before:
@@ -173,6 +254,8 @@ if __name__ == "__main__":
     # Cấu hình
     TARGET_SIZE = (224, 224)  # Hoặc (299, 299) cho InceptionV3, Xception
     PADDING_COLOR = (0, 0, 0)  # Màu đen, có thể dùng (255, 255, 255) cho màu trắng
+    COLOR_SPACE = "HSV"  # 'BGR' | 'RGB' | 'HSV' | 'LAB'
+    SAVE_AS_NPY = False   # Bạn chưa cần xuất .npy
     
     # Xử lý dataset
     process_strawberry_dataset(
@@ -180,5 +263,7 @@ if __name__ == "__main__":
         output_dir=OUTPUT_DIR,
         target_size=TARGET_SIZE,
         padding_color=PADDING_COLOR,
+        color_space=COLOR_SPACE,
+        save_as_npy=SAVE_AS_NPY,
         visualize_samples=True
     )
