@@ -261,7 +261,7 @@ if __name__ == "__main__":
     # Ví dụ sử dụng
     process_strawberry_dataset(
         input_dir="./dataset/strawberry/Ripe",                 # Thư mục ảnh gốc (label: ripe)
-        output_dir="./dataset/strawberry/Ripe_processed_224",  # Thư mục lưu ảnh sau xử lý
+        output_dir="./dataset/strawberry/Ripe_preprocessed",  # Thư mục lưu ảnh sau xử lý
         target_size=(224, 224),                                 # Kích thước chuẩn cho CNN
         padding_color=(0, 0, 0),                                # Màu viền khi giữ tỉ lệ ảnh
         color_space="HSV",                                     # Không gian màu đầu ra: BGR/RGB/HSV/LAB
@@ -272,7 +272,7 @@ if __name__ == "__main__":
     )  
     process_strawberry_dataset(
         input_dir="./dataset/strawberry/Unripe",                 # Thư mục ảnh gốc (label: unripe)
-        output_dir="./dataset/strawberry/Unripe_processed_224",  # Thư mục lưu ảnh sau xử lý
+        output_dir="./dataset/strawberry/Unripe_preprocessed",  # Thư mục lưu ảnh sau xử lý
         target_size=(224, 224),                                   # Kích thước chuẩn cho CNN
         padding_color=(0, 0, 0),                                  # Màu viền khi giữ tỉ lệ ảnh
         color_space="HSV",                                       # Không gian màu đầu ra: BGR/RGB/HSV/LAB
