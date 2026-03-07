@@ -58,8 +58,8 @@ from pathlib import Path
 
 CONFIG = {
     # Dữ liệu
-    'ripe_dir': '../dataset/strawberry/Ripe_processed_224',
-    'unripe_dir': '../dataset/strawberry/Unripe_processed_224',
+    'ripe_dir': './dataset/strawberry/Ripe_preprocessed',
+    'unripe_dir': './dataset/strawberry/Unripe_preprocessed',
     'test_size': 0.2,  # 20% dùng test, 80% dùng train
     'val_split': 0.2,  # 20% trong train dùng validation
     
