@@ -167,8 +167,8 @@ if __name__ == "__main__":
     # Ví dụ sử dụng
     
     # Đường dẫn thư mục
-    INPUT_DIR = "../dataset/strawberry/Ripe"
-    OUTPUT_DIR = "../dataset/strawberry/Ripe_processed_224"
+    INPUT_DIR = "./dataset/strawberry/Ripe"
+    OUTPUT_DIR = "./dataset/strawberry/Ripe_processed_224"
     
     # Cấu hình
     TARGET_SIZE = (224, 224)  # Hoặc (299, 299) cho InceptionV3, Xception
