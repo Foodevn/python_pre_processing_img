@@ -139,6 +139,51 @@ def visualize_preprocessing(samples_before, samples_after):
     plt.show()
 
 
+def augment_image(image, augmentations=None):
+    """
+    Tạo các biến thể augmented từ ảnh gốc (uint8).
+
+    Args:
+        image: Ảnh đầu vào (numpy array, uint8)
+        augmentations: Danh sách các phép augment muốn áp dụng.
+            Hỗ trợ: 'flip_h', 'flip_v', 'rotate_15', 'rotate_neg15',
+                    'brightness_up', 'brightness_down'
+            Mặc định (None): áp dụng tất cả 6 phép trên.
+
+    Returns:
+        List các tuple (augmented_image, suffix) — suffix dùng để đặt tên file.
+    """
+    if augmentations is None:
+        augmentations = ["flip_h", "flip_v", "rotate_15", "rotate_neg15",
+                         "brightness_up", "brightness_down"]
+
+    h, w = image.shape[:2]
+    cx, cy = w / 2, h / 2
+    results = []
+
+    for aug in augmentations:
+        if aug == "flip_h":
+            results.append((cv2.flip(image, 1), "flip_h"))
+        elif aug == "flip_v":
+            results.append((cv2.flip(image, 0), "flip_v"))
+        elif aug == "rotate_15":
+            M = cv2.getRotationMatrix2D((cx, cy), 15, 1.0)
+            rotated = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+            results.append((rotated, "rot15"))
+        elif aug == "rotate_neg15":
+            M = cv2.getRotationMatrix2D((cx, cy), -15, 1.0)
+            rotated = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+            results.append((rotated, "rot_15"))
+        elif aug == "brightness_up":
+            results.append((cv2.convertScaleAbs(image, alpha=1.2, beta=30), "bright_up"))
+        elif aug == "brightness_down":
+            results.append((cv2.convertScaleAbs(image, alpha=0.8, beta=-30), "bright_dn"))
+        else:
+            print(f"⚠️  Augmentation không hợp lệ, bỏ qua: '{aug}'")
+
+    return results
+
+
 def normalize_image(image):
     """
     Normalize pixel values về [0, 1] bằng cách chia cho 255.
@@ -154,8 +199,8 @@ def normalize_image(image):
 
 def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
                                padding_color=(0, 0, 0), color_space="BGR",
-                               normalize=False, save_as_npy=False,
-                               visualize_samples=True,
+                               normalize=False, augment=False, augmentations=None,
+                               save_as_npy=False, visualize_samples=True,
                                output_prefix="strawberry", add_ripe_in_name=None):
     """
     Xử lý toàn bộ dataset ảnh dâu tây
@@ -169,6 +214,11 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
         normalize: True/False.
             - True: normalize pixel values về [0.0, 1.0] (float32)
             - False: giữ nguyên giá trị uint8 [0, 255]
+        augment: True/False.
+            - True: tạo thêm các ảnh augmented cho mỗi ảnh gốc
+            - False: không augment (mặc định)
+        augmentations: Danh sách augmentation muốn dùng (None = dùng tất cả mặc định).
+            Ví dụ: ['flip_h', 'rotate_15', 'brightness_up']
         save_as_npy: True/False.
             - True: lưu tensor dưới dạng .npy
             - False: lưu ảnh thông thường (nếu normalize=True sẽ chuyển lại uint8)
@@ -203,6 +253,8 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
     print(f"🎨 Màu padding: {padding_color}")
     print(f"🌈 Color space: {color_space}")
     print(f"📐 Normalize: {'Bật (float32, [0.0, 1.0])' if normalize else 'Tắt (uint8, [0, 255])'}")
+    _aug_list = augmentations if augmentations else ["flip_h", "flip_v", "rotate_15", "rotate_neg15", "brightness_up", "brightness_down"]
+    print(f"🔀 Augment: {'Bật → ' + ', '.join(_aug_list) if augment else 'Tắt'}")
     print("─" * 60)
 
     color_space = color_space.upper()
@@ -238,26 +290,38 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
             # Bước 4: Chuyển đổi không gian màu (tùy chọn)
             processed_image = convert_color_space(resized_image, color_space=color_space)
 
-            # Bước 5: Normalize pixel values (tùy chọn)
+            # Bước 5: Augmentation (tùy chọn) — áp dụng trước normalize
+            aug_variants = []  # list of (image_uint8, suffix)
+            if augment:
+                aug_variants = augment_image(processed_image, augmentations)
+
+            # Bước 6: Normalize pixel values (tùy chọn)
             if normalize:
                 processed_image = normalize_image(processed_image)
 
-            # Lưu ảnh đã xử lý
+            # Hàm trợ giúp lưu một ảnh (uint8 hoặc float32)
+            def _save(img, stem):
+                if save_as_npy:
+                    np.save(str(output_path / f"{stem}.npy"), img)
+                else:
+                    img_uint8 = (img * 255).astype(np.uint8) if normalize else img
+                    cv2.imwrite(str(output_path / f"{stem}{image_file.suffix.lower()}"),
+                                to_save_bgr(img_uint8, color_space))
+
+            # Lưu ảnh gốc đã xử lý
             name_stem = f"{output_prefix}_{'ripe_' if add_ripe_in_name else ''}{idx:04d}"
-            if save_as_npy:
-                output_file = output_path / f"{name_stem}.npy"
-                np.save(str(output_file), processed_image)
-            else:
-                output_file = output_path / f"{name_stem}{image_file.suffix.lower()}"
-                # Nếu đã normalize thì chuyển lại uint8 trước khi lưu ảnh
-                img_to_save = (processed_image * 255).astype(np.uint8) if normalize else processed_image
-                save_image = to_save_bgr(img_to_save, color_space)
-                cv2.imwrite(str(output_file), save_image)
+            _save(processed_image, name_stem)
+
+            # Lưu các ảnh augmented
+            for aug_img, aug_suffix in aug_variants:
+                aug_normalized = normalize_image(aug_img) if normalize else aug_img
+                _save(aug_normalized, f"{name_stem}_{aug_suffix}")
             
             processed_count += 1
+            aug_info = f" + {len(aug_variants)} augmented" if aug_variants else ""
             print(f"✅ [{idx}/{len(image_files)}] {image_file.name}: "
                   f"{original_shape[1]}x{original_shape[0]} → "
-                  f"{target_size[0]}x{target_size[1]} | {color_space}")
+                  f"{target_size[0]}x{target_size[1]} | {color_space}{aug_info}")
             
             # Lưu mẫu để visualize (3 ảnh đầu tiên)
             if visualize_samples and len(samples_before) < 3:
@@ -272,7 +336,9 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
             print(f"❌ Lỗi khi xử lý {image_file.name}: {str(e)}")
     
     print("─" * 60)
-    print(f"✨ Hoàn thành! Đã xử lý {processed_count}/{len(image_files)} ảnh")
+    aug_count = processed_count * len(_aug_list) if augment else 0
+    print(f"✨ Hoàn thành! Đã xử lý {processed_count}/{len(image_files)} ảnh"
+          + (f" → tổng {processed_count + aug_count} file (gốc + augmented)" if augment else ""))
     print(f"📁 Ảnh đã lưu tại: {output_dir}")
     if save_as_npy:
         print("💾 Định dạng lưu: .npy (phù hợp làm input cho model)")
@@ -289,7 +355,9 @@ if __name__ == "__main__":
         target_size=(224, 224),                                 # Kích thước chuẩn cho CNN
         padding_color=(0, 0, 0),                                # Màu viền khi giữ tỉ lệ ảnh
         color_space="HSV",                                     # Không gian màu đầu ra: BGR/RGB/HSV/LAB
-        normalize=False,                                        # True: float32 [0,1], False: uint8 [0,255]
+        normalize=True,                                        # True: float32 [0,1], False: uint8 [0,255]
+        augment=True,                                          # True: tạo thêm ảnh augmented
+        augmentations=None,                                     # None: dùng tất cả mặc định
         save_as_npy=False,                                      # False: lưu ảnh, True: lưu tensor .npy
         visualize_samples=True,                                 # Hiển thị ảnh trước/sau (3 mẫu đầu)
         output_prefix="strawberry",                            # Tiền tố tên file output
@@ -302,6 +370,8 @@ if __name__ == "__main__":
         padding_color=(0, 0, 0),                                  # Màu viền khi giữ tỉ lệ ảnh
         color_space="HSV",                                       # Không gian màu đầu ra: BGR/RGB/HSV/LAB
         normalize=False,                                          # True: float32 [0,1], False: uint8 [0,255]
+        augment=False,                                            # True: tạo thêm ảnh augmented
+        augmentations=None,                                       # None: dùng tất cả mặc định
         save_as_npy=False,                                        # False: lưu ảnh, True: lưu tensor .npy
         visualize_samples=True,                                   # Hiển thị ảnh trước/sau (3 mẫu đầu)
         output_prefix="strawberry_unripe",                       # Tiền tố tên file output
