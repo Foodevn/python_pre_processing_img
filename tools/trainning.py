@@ -247,6 +247,22 @@ def train_model(model, train_files, train_labels, test_files, test_labels,
     print(f"   - X_test: {X_test.shape}, y_test: {y_test.shape}")
     print("─" * 60)
     
+    # Chia thêm tập validation từ train set.
+    # Lưu ý: validation_split không dùng được khi input là generator.
+    from sklearn.model_selection import train_test_split
+    X_train_final, X_val, y_train_final, y_val = train_test_split(
+        X_train,
+        y_train,
+        test_size=val_split,
+        random_state=42,
+        stratify=y_train,
+    )
+
+    print(f"📦 Sau khi tách validation:")
+    print(f"   - X_train_final: {X_train_final.shape}, y_train_final: {y_train_final.shape}")
+    print(f"   - X_val: {X_val.shape}, y_val: {y_val.shape}")
+    print("─" * 60)
+
     # Data augmentation cho training
     train_gen = create_data_generator(mode='train')
     
@@ -271,9 +287,9 @@ def train_model(model, train_files, train_labels, test_files, test_labels,
     print("─" * 60)
     
     history = model.fit(
-        train_gen.flow(X_train, y_train, batch_size=batch_size),
+        train_gen.flow(X_train_final, y_train_final, batch_size=batch_size),
         epochs=epochs,
-        validation_split=val_split,
+        validation_data=(X_val, y_val),
         callbacks=[early_stop, checkpoint],
         verbose=1
     )
