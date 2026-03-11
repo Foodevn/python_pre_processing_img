@@ -452,7 +452,7 @@ def split_dataset(source_dir, output_dir, train_ratio=0.7, val_ratio=0.2, test_r
     print(f"📁 Đã lưu tại: {output_dir}")
     # Bước 1: Tiền xử lý ảnh
     process_strawberry_dataset(
-        input_dir="./dataset/strawberry/Ripe",
+        input_dir="./dataset/strawberry/Ripe_Strawberry",
         output_dir="./dataset/strawberry/Ripe_preprocessed",
         target_size=(224, 224),
         padding_color=(0, 0, 0),
@@ -465,8 +465,9 @@ def split_dataset(source_dir, output_dir, train_ratio=0.7, val_ratio=0.2, test_r
         output_prefix="strawberry",
         add_ripe_in_name=None
     )
+   
     process_strawberry_dataset(
-        input_dir="./dataset/strawberry/Unripe",
+        input_dir="./dataset/strawberry/Unripe_Strawberry",
         output_dir="./dataset/strawberry/Unripe_preprocessed",
         target_size=(224, 224),
         padding_color=(0, 0, 0),
@@ -480,6 +481,20 @@ def split_dataset(source_dir, output_dir, train_ratio=0.7, val_ratio=0.2, test_r
         add_ripe_in_name=None
     )
 
+    process_strawberry_dataset(
+        input_dir="./dataset/strawberry/Rotten_Strawberry",
+        output_dir="./dataset/strawberry/Rotten_preprocessed",
+        target_size=(224, 224),
+        padding_color=(0, 0, 0),
+        color_space="HSV",
+        normalize=False,
+        augment=False,
+        augmentations=None,
+        save_as_npy=False,
+        visualize_samples=True,
+        output_prefix="strawberry_rotten",
+        add_ripe_in_name=None
+    )
     # Bước 2: Chia train/val/test (70% / 20% / 10%)
     split_dataset(
         source_dir="./dataset/strawberry",         # Thư mục chứa Ripe_preprocessed & Unripe_preprocessed
