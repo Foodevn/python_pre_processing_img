@@ -6,8 +6,10 @@ Xử lý tiền xử lý dữ liệu ảnh quả dâu tây
 import cv2
 import numpy as np
 import os
+import shutil
 from pathlib import Path
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 
 
 def resize_with_padding(image, target_size=(224, 224), padding_color=(0, 0, 0)):
@@ -347,34 +349,144 @@ def process_strawberry_dataset(input_dir, output_dir, target_size=(224, 224),
     if visualize_samples and samples_before:
         visualize_preprocessing(samples_before, samples_after)
 
-if __name__ == "__main__":
-    # Ví dụ sử dụng
+
+def split_dataset(source_dir, output_dir, train_ratio=0.7, val_ratio=0.2, test_ratio=0.1,
+                  random_state=42, copy_files=True):
+    """
+    Chia tập dữ liệu thành train / val / test từ nhiều thư mục class con.
+
+    Cấu trúc source_dir:
+        source_dir/
+            ClassName1/   (vd: Ripe_preprocessed)
+            ClassName2/   (vd: Unripe_preprocessed)
+
+    Kết quả output_dir:
+        output_dir/
+            train/ClassName1/, train/ClassName2/
+            val/ClassName1/,   val/ClassName2/
+            test/ClassName1/,  test/ClassName2/
+
+    Args:
+        source_dir:   Thư mục gốc chứa các class con
+        output_dir:   Thư mục đích để lưu train/val/test
+        train_ratio:  Tỷ lệ tập huấn luyện (mặc định 0.7)
+        val_ratio:    Tỷ lệ tập xác thực   (mặc định 0.2)
+        test_ratio:   Tỷ lệ tập kiểm tra   (mặc định 0.1)
+        random_state: Seed ngẫu nhiên để tái lập kết quả
+        copy_files:   True = copy file, False = chỉ tạo symlink (tiết kiệm disk)
+    """
+    if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
+        raise ValueError("train_ratio + val_ratio + test_ratio phải bằng 1.0")
+
+    source_path = Path(source_dir)
+    output_path = Path(output_dir)
+
+    if not source_path.exists():
+        print(f"❌ Thư mục không tồn tại: {source_dir}")
+        return
+
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.npy'}
+    class_dirs = sorted([d for d in source_path.iterdir() if d.is_dir()])
+
+    if not class_dirs:
+        print(f"❌ Không tìm thấy thư mục class nào trong: {source_dir}")
+        return
+
+    print(f"📂 Source: {source_dir}")
+    print(f"📁 Output: {output_dir}")
+    print(f"📊 Tỷ lệ chia: train={train_ratio:.0%} | val={val_ratio:.0%} | test={test_ratio:.0%}")
+    print(f"🎲 Random state: {random_state}")
+    print("─" * 60)
+
+    total_stats = {"train": 0, "val": 0, "test": 0}
+
+    for class_dir in class_dirs:
+        class_name = class_dir.name
+        files = sorted(
+            [f for f in class_dir.iterdir() if f.suffix.lower() in image_extensions],
+            key=lambda p: p.name.lower()
+        )
+
+        if not files:
+            print(f"⚠️  Bỏ qua '{class_name}': không có file ảnh")
+            continue
+
+        # Chia train / temp, rồi chia temp → val / test
+        val_test_ratio = val_ratio + test_ratio
+        test_in_temp = test_ratio / val_test_ratio
+
+        train_files, temp_files = train_test_split(
+            files, test_size=val_test_ratio, random_state=random_state
+        )
+        val_files, test_files = train_test_split(
+            temp_files, test_size=test_in_temp, random_state=random_state
+        )
+
+        splits = {"train": train_files, "val": val_files, "test": test_files}
+
+        for split_name, split_files in splits.items():
+            dest_dir = output_path / split_name / class_name
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            for f in split_files:
+                dest = dest_dir / f.name
+                if copy_files:
+                    shutil.copy2(str(f), str(dest))
+                else:
+                    if not dest.exists():
+                        dest.symlink_to(f.resolve())
+
+            total_stats[split_name] += len(split_files)
+
+        print(f"  📂 {class_name:30s} → "
+              f"train: {len(train_files):4d} | "
+              f"val: {len(val_files):4d} | "
+              f"test: {len(test_files):4d} "
+              f"(tổng: {len(files)})")
+
+    print("─" * 60)
+    print(f"✨ Hoàn thành! Tổng: "
+          f"train={total_stats['train']} | "
+          f"val={total_stats['val']} | "
+          f"test={total_stats['test']}")
+    print(f"📁 Đã lưu tại: {output_dir}")
+    # Bước 1: Tiền xử lý ảnh
     process_strawberry_dataset(
-        input_dir="./dataset/strawberry/Ripe",                 # Thư mục ảnh gốc (label: ripe)
-        output_dir="./dataset/strawberry/Ripe_preprocessed",  # Thư mục lưu ảnh sau xử lý
-        target_size=(224, 224),                                 # Kích thước chuẩn cho CNN
-        padding_color=(0, 0, 0),                                # Màu viền khi giữ tỉ lệ ảnh
-        color_space="HSV",                                     # Không gian màu đầu ra: BGR/RGB/HSV/LAB
-        normalize=True,                                        # True: float32 [0,1], False: uint8 [0,255]
-        augment=True,                                          # True: tạo thêm ảnh augmented
-        augmentations=None,                                     # None: dùng tất cả mặc định
-        save_as_npy=False,                                      # False: lưu ảnh, True: lưu tensor .npy
-        visualize_samples=True,                                 # Hiển thị ảnh trước/sau (3 mẫu đầu)
-        output_prefix="strawberry",                            # Tiền tố tên file output
-        add_ripe_in_name=None                                   # None: tự nhận diện folder Ripe để thêm 'ripe'
+        input_dir="./dataset/strawberry/Ripe",
+        output_dir="./dataset/strawberry/Ripe_preprocessed",
+        target_size=(224, 224),
+        padding_color=(0, 0, 0),
+        color_space="HSV",
+        normalize=True,
+        augment=True,
+        augmentations=None,
+        save_as_npy=False,
+        visualize_samples=True,
+        output_prefix="strawberry",
+        add_ripe_in_name=None
     )
     process_strawberry_dataset(
-        input_dir="./dataset/strawberry/Unripe",                 # Thư mục ảnh gốc (label: unripe)
-        output_dir="./dataset/strawberry/Unripe_preprocessed",  # Thư mục lưu ảnh sau xử lý
-        target_size=(224, 224),                                   # Kích thước chuẩn cho CNN
-        padding_color=(0, 0, 0),                                  # Màu viền khi giữ tỉ lệ ảnh
-        color_space="HSV",                                       # Không gian màu đầu ra: BGR/RGB/HSV/LAB
-        normalize=False,                                          # True: float32 [0,1], False: uint8 [0,255]
-        augment=False,                                            # True: tạo thêm ảnh augmented
-        augmentations=None,                                       # None: dùng tất cả mặc định
-        save_as_npy=False,                                        # False: lưu ảnh, True: lưu tensor .npy
-        visualize_samples=True,                                   # Hiển thị ảnh trước/sau (3 mẫu đầu)
-        output_prefix="strawberry_unripe",                       # Tiền tố tên file output
-        add_ripe_in_name=None                                     # None: không thêm 'ripe' cho folder Unripe
-    )   
- 
+        input_dir="./dataset/strawberry/Unripe",
+        output_dir="./dataset/strawberry/Unripe_preprocessed",
+        target_size=(224, 224),
+        padding_color=(0, 0, 0),
+        color_space="HSV",
+        normalize=False,
+        augment=False,
+        augmentations=None,
+        save_as_npy=False,
+        visualize_samples=True,
+        output_prefix="strawberry_unripe",
+        add_ripe_in_name=None
+    )
+
+    # Bước 2: Chia train/val/test (70% / 20% / 10%)
+    split_dataset(
+        source_dir="./dataset/strawberry",         # Thư mục chứa Ripe_preprocessed & Unripe_preprocessed
+        output_dir="./dataset/strawberry/split",   # Kết quả: split/train, split/val, split/test
+        train_ratio=0.7,
+        val_ratio=0.2,
+        test_ratio=0.1,
+        random_state=42,
+        copy_files=True                            # False: dùng symlink để tiết kiệm dung lượng
+    )
